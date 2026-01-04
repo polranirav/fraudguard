@@ -237,6 +237,8 @@ fraudguard/
 | [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) | Complete implementation walkthrough |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Detailed system architecture |
 | [docs/FRAUD_DETECTION_RULES.md](docs/FRAUD_DETECTION_RULES.md) | Fraud detection rules and thresholds |
+| [docs/UPGRADE_RESEARCH_CNS_DIS.md](docs/UPGRADE_RESEARCH_CNS_DIS.md) | **🆕 CNS-DIS Upgrade Research** - Cognitive Neuro-Symbolic Digital Immune System |
+| [docs/CNS_DIS_ARCHITECTURE.md](docs/CNS_DIS_ARCHITECTURE.md) | **🆕 CNS-DIS Technical Architecture** - Design for advanced AI components |
 | [LOAD_TEST_RESULTS.md](LOAD_TEST_RESULTS.md) | Performance test results (50K TPS) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Developer contribution guidelines |
 
@@ -374,9 +376,7 @@ This project is licensed under the MIT License.
 ---
 
 ## 👥 Authors
-
-Enterprise Data Engineering Team
-
+Nirav
 ---
 
 ## 🙏 Acknowledgments
