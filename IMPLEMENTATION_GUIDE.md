@@ -264,13 +264,13 @@ Created Maven multi-module project structure.
 
 **Why This Structure?**
 ```
-fraud-detection-core/
-├── fraud-common/          # Shared code (models, DTOs)
-├── fraud-ingestion/       # Kafka producers
-├── fraud-processing/      # Flink jobs (main logic)
-├── fraud-enrichment/      # Redis lookups
-├── fraud-persistence/     # Data warehouse sinks
-└── fraud-alerts/          # Alert service
+finance-intelligence-root/
+├── intelligence-common/          # Shared code (models, DTOs)
+├── intelligence-ingestion/       # Kafka producers
+├── intelligence-processing/      # Flink jobs (main logic)
+├── intelligence-enrichment/      # Redis lookups
+├── intelligence-persistence/     # Data warehouse sinks (Azure Synapse)
+└── intelligence-alerts/          # Alert service (Spring Boot)
 ```
 
 **Reasoning**:
@@ -284,7 +284,7 @@ fraud-detection-core/
 <!-- Parent POM manages dependencies -->
 <parent>
     <groupId>com.frauddetection</groupId>
-    <artifactId>fraud-detection-core</artifactId>
+    <artifactId>finance-intelligence-root</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </parent>
 ```
@@ -758,7 +758,7 @@ metadata:
   name: fraud-detection-job
 spec:
   job:
-    jarURI: local:///opt/flink/usrlib/fraud-processing.jar
+    jarURI: local:///opt/flink/usrlib/intelligence-processing-1.0.0-SNAPSHOT.jar
     parallelism: 4
   taskManager:
     resource:
@@ -1104,10 +1104,10 @@ docker-compose -f docker-compose.dev.yml up -d
 # Submit Flink job
 docker exec fraud-flink-jm flink run \
   -c com.frauddetection.processing.job.FraudDetectionJob \
-  /opt/flink/usrlib/fraud-processing.jar
+  /opt/flink/usrlib/intelligence-processing-1.0.0-SNAPSHOT.jar
 
 # Generate test transactions
-java -jar fraud-ingestion/target/fraud-ingestion.jar
+java -jar finance-intelligence-root/intelligence-ingestion/target/intelligence-ingestion-1.0.0-SNAPSHOT.jar
 ```
 
 **Why Local First?**

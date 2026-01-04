@@ -18,13 +18,13 @@ Thank you for your interest in contributing to the Real-Time Fraud Detection Pla
 
 1. **Fork and Clone**
    ```bash
-   git clone <your-fork-url>
-   cd Real-Time-Financial-Fraud-Detection-Platform
+   git clone https://github.com/polranirav/fraudguard.git
+   cd fraudguard
    ```
 
 2. **Build the Project**
    ```bash
-   cd fraud-detection-core
+   cd finance-intelligence-root
    mvn clean install
    ```
 
@@ -98,13 +98,13 @@ Then create a Pull Request on GitHub.
 ### Module Organization
 
 ```
-fraud-detection-core/
-├── fraud-common/          # Shared models, DTOs, utilities
-├── fraud-ingestion/       # Kafka producers
-├── fraud-processing/      # Flink jobs (main logic)
-├── fraud-enrichment/      # Redis enrichment
-├── fraud-persistence/     # Data warehouse sinks
-└── fraud-alerts/          # Alert service
+finance-intelligence-root/
+├── intelligence-common/          # Shared models, DTOs, utilities
+├── intelligence-ingestion/       # Kafka producers
+├── intelligence-processing/      # Flink jobs (main logic)
+├── intelligence-enrichment/      # Redis enrichment
+├── intelligence-persistence/     # Data warehouse sinks (Azure Synapse)
+└── intelligence-alerts/          # Alert service (Spring Boot)
 ```
 
 ### Code Style

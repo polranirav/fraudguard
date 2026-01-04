@@ -65,11 +65,11 @@ This platform provides real-time fraud detection for financial transactions usin
 ### 1. Clone and Build
 
 ```bash
-git clone <repository-url>
-cd Real-Time-Financial-Fraud-Detection-Platform
+git clone https://github.com/polranirav/fraudguard.git
+cd fraudguard
 
 # Build all modules
-cd fraud-detection-core
+cd finance-intelligence-root
 mvn clean package -DskipTests
 ```
 
@@ -87,26 +87,26 @@ docker ps
 
 ```bash
 # Copy JAR to Flink
-docker cp fraud-detection-core/fraud-processing/target/fraud-processing-1.0.0-SNAPSHOT.jar \
+docker cp finance-intelligence-root/intelligence-processing/target/intelligence-processing-1.0.0-SNAPSHOT.jar \
   fraud-flink-jm:/opt/flink/usrlib/
 
 # Submit job
 docker exec fraud-flink-jm flink run \
   -c com.frauddetection.processing.job.FraudDetectionJob \
-  /opt/flink/usrlib/fraud-processing-1.0.0-SNAPSHOT.jar
+  /opt/flink/usrlib/intelligence-processing-1.0.0-SNAPSHOT.jar
 ```
 
 ### 4. Generate Test Transactions
 
 ```bash
 docker run --rm --network fraud-network \
-  -v "$(pwd)/fraud-detection-core/fraud-ingestion/target:/app" \
+  -v "$(pwd)/finance-intelligence-root/intelligence-ingestion/target:/app" \
   -e KAFKA_BOOTSTRAP_SERVERS=kafka:29092 \
   eclipse-temurin:17-jre \
-  java -jar /app/fraud-ingestion-1.0.0-SNAPSHOT.jar
+  java -jar /app/intelligence-ingestion-1.0.0-SNAPSHOT.jar
 ```
 
-**For detailed setup instructions**, see [QUICK_START.md](QUICK_START.md)
+**For detailed setup instructions**, see [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
 
 ---
 
@@ -159,34 +159,54 @@ RiskScore = 0.4 × RuleScore + 0.35 × MLScore + 0.25 × EmbeddingScore
 ## 📁 Project Structure
 
 ```
-fraud-detection-platform/
-├── fraud-detection-core/          # Main application code
-│   ├── fraud-common/              # Shared models and utilities
-│   ├── fraud-ingestion/           # Kafka transaction producers
-│   ├── fraud-processing/          # Flink fraud detection jobs
-│   ├── fraud-enrichment/          # Redis enrichment services
-│   ├── fraud-persistence/         # Data warehouse sinks
-│   └── fraud-alerts/              # Alert notification service
+fraudguard/
+├── finance-intelligence-root/     # Main application code (Maven multi-module)
+│   ├── intelligence-common/       # Shared models and utilities
+│   ├── intelligence-ingestion/    # Kafka transaction producers
+│   ├── intelligence-processing/    # Flink fraud detection jobs
+│   ├── intelligence-enrichment/   # Redis enrichment services
+│   ├── intelligence-persistence/ # Data warehouse sinks (Azure Synapse)
+│   └── intelligence-alerts/       # Alert notification service (Spring Boot)
 │
 ├── ml-models/                     # Machine learning components
 │   ├── training/                  # XGBoost model training
 │   ├── inference/                 # ML inference service (FastAPI)
-│   └── models/                    # Trained model files
+│   ├── models/                    # Trained model files (.pkl)
+│   └── metrics/                   # Model training metrics
 │
 ├── infrastructure/                # Infrastructure as Code
-│   ├── docker/                   # Dockerfiles
+│   ├── docker/                   # Dockerfiles for all services
 │   ├── k8s/                      # Kubernetes manifests
-│   ├── terraform/                # Azure infrastructure
-│   └── databricks/               # Databricks workspace
+│   ├── terraform/                # Azure infrastructure (AKS, Storage, etc.)
+│   ├── azure/                    # Azure Bicep templates
+│   ├── kafka/                    # Kafka topic creation scripts
+│   └── databricks/               # Databricks workspace configuration
 │
 ├── scripts/                       # Utility scripts
-│   ├── load-testing/             # Performance testing
-│   └── migration/                # Data migration tools
+│   ├── load-testing/             # Performance testing (50K TPS)
+│   ├── migration/                # Data migration tools (Sqoop, Hadoop)
+│   ├── synapse/                  # Azure Synapse SQL scripts
+│   └── setup-dev-env.sh          # Development environment setup
 │
-└── docs/                         # Documentation
-    ├── ARCHITECTURE.md           # System architecture
-    ├── FRAUD_DETECTION_RULES.md  # Detection rules
-    └── BUILDING_FRAUD_DETECTION_SYSTEM.md
+├── docs/                         # Documentation
+│   ├── ARCHITECTURE.md           # System architecture
+│   ├── FRAUD_DETECTION_RULES.md  # Detection rules and thresholds
+│   ├── BUILDING_FRAUD_DETECTION_SYSTEM.md
+│   ├── PROJECT_PLANNING_METHODOLOGY.md
+│   └── SPRINT_TIMELINE.md
+│
+├── powerbi/                      # Power BI dashboard templates
+│
+├── .azure-pipelines/             # CI/CD pipelines
+│
+├── README.md                     # This file
+├── DEPLOYMENT_GUIDE.md           # Production deployment guide
+├── IMPLEMENTATION_GUIDE.md       # Complete implementation walkthrough
+├── STAKEHOLDER_GUIDE.md          # Business stakeholder guide
+├── CONTRIBUTING.md               # Contribution guidelines
+├── LOAD_TEST_RESULTS.md          # Performance test results
+├── docker-compose.yml            # Production Docker Compose
+└── docker-compose.dev.yml        # Development Docker Compose
 ```
 
 ---
@@ -213,8 +233,8 @@ fraud-detection-platform/
 | Document | Description |
 |----------|-------------|
 | [**STAKEHOLDER_GUIDE.md**](STAKEHOLDER_GUIDE.md) | **For Business Stakeholders** - How the system works |
-| [QUICK_START.md](QUICK_START.md) | Developer quick start guide |
 | [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) | Production deployment instructions |
+| [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) | Complete implementation walkthrough |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Detailed system architecture |
 | [docs/FRAUD_DETECTION_RULES.md](docs/FRAUD_DETECTION_RULES.md) | Fraud detection rules and thresholds |
 | [LOAD_TEST_RESULTS.md](LOAD_TEST_RESULTS.md) | Performance test results (50K TPS) |
@@ -257,7 +277,7 @@ execution.checkpointing.mode: EXACTLY_ONCE
 ### Unit Tests
 
 ```bash
-cd fraud-detection-core
+cd finance-intelligence-root
 mvn test
 ```
 

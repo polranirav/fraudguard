@@ -260,7 +260,7 @@ cd finance-intelligence-root
 mvn clean package -DskipTests
 
 # 3. Submit Flink job
-docker cp intelligence-processing/target/intelligence-processing-1.0.0-SNAPSHOT.jar \
+docker cp finance-intelligence-root/intelligence-processing/target/intelligence-processing-1.0.0-SNAPSHOT.jar \
   fraud-flink-jm:/opt/flink/usrlib/
   
 docker exec fraud-flink-jm flink run \
@@ -269,7 +269,7 @@ docker exec fraud-flink-jm flink run \
 
 # 4. Generate test transactions
 docker run --rm --network fraud-network \
-  -v "$(pwd)/../intelligence-ingestion/target:/app" \
+  -v "$(pwd)/finance-intelligence-root/intelligence-ingestion/target:/app" \
   -e KAFKA_BOOTSTRAP_SERVERS=kafka:29092 \
   eclipse-temurin:17-jre \
   java -jar /app/intelligence-ingestion-1.0.0-SNAPSHOT.jar
