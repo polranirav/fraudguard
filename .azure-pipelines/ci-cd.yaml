@@ -1,0 +1,248 @@
+# Azure DevOps CI/CD Pipeline for Fraud Detection Platform
+#
+# This pipeline builds, tests, and deploys the fraud detection Flink job
+# to Azure Kubernetes Service (AKS).
+#
+# Stages:
+# 1. Build - Compile and test Maven project, create uber-JAR
+# 2. Docker - Build and push Docker images to ACR
+# 3. Deploy - Deploy to AKS using Flink Kubernetes Operator
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - finance-intelligence-root/**
+      - infrastructure/**
+
+pr:
+  branches:
+    include:
+      - main
+
+variables:
+  # Azure settings
+  azureSubscription: 'fraud-detection-service-connection'
+  acrName: 'acrfraud'
+  aksResourceGroup: 'rg-fraud-detection-prod'
+  aksClusterName: 'aks-fraud-flink'
+  
+  # Maven settings
+  mavenPomFile: 'finance-intelligence-root/pom.xml'
+  mavenGoals: 'clean package -DskipTests'
+  mavenTestGoals: 'test'
+  
+  # Docker settings
+  dockerfilePath: 'infrastructure/docker/Dockerfile.flink'
+  imageName: 'flink-fraud'
+  
+  # Kubernetes settings
+  kubernetesNamespace: 'flink-fraud'
+  flinkDeploymentFile: 'infrastructure/k8s/flink-deployment.yaml'
+
+stages:
+  # ==========================================================================
+  # Stage 1: Build
+  # ==========================================================================
+  - stage: Build
+    displayName: 'Build & Test'
+    jobs:
+      - job: BuildMaven
+        displayName: 'Build Maven Project'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          # Setup Java 17
+          - task: JavaToolInstaller@0
+            displayName: 'Install Java 17'
+            inputs:
+              versionSpec: '17'
+              jdkArchitectureOption: 'x64'
+              jdkSourceOption: 'PreInstalled'
+          
+          # Cache Maven dependencies
+          - task: Cache@2
+            displayName: 'Cache Maven dependencies'
+            inputs:
+              key: 'maven | "$(Agent.OS)" | $(mavenPomFile)'
+              restoreKeys: |
+                maven | "$(Agent.OS)"
+              path: '$(MAVEN_CACHE_FOLDER)'
+          
+          # Build project
+          - task: Maven@4
+            displayName: 'Maven Build'
+            inputs:
+              mavenPomFile: '$(mavenPomFile)'
+              goals: '$(mavenGoals)'
+              options: '-Dmaven.repo.local=$(MAVEN_CACHE_FOLDER)'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.17'
+              publishJUnitResults: false
+          
+          # Run unit tests
+          - task: Maven@4
+            displayName: 'Maven Test'
+            inputs:
+              mavenPomFile: '$(mavenPomFile)'
+              goals: '$(mavenTestGoals)'
+              options: '-Dmaven.repo.local=$(MAVEN_CACHE_FOLDER)'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.17'
+              publishJUnitResults: true
+              testResultsFiles: '**/surefire-reports/TEST-*.xml'
+          
+          # Publish uber-JAR as artifact
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish JAR Artifact'
+            inputs:
+              pathToPublish: 'finance-intelligence-root/intelligence-processing/target/intelligence-processing-1.0.0-SNAPSHOT.jar'
+              artifactName: 'flink-job'
+              publishLocation: 'Container'
+          
+          # Publish infrastructure files
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Infrastructure'
+            inputs:
+              pathToPublish: 'infrastructure'
+              artifactName: 'infrastructure'
+              publishLocation: 'Container'
+
+  # ==========================================================================
+  # Stage 2: Docker
+  # ==========================================================================
+  - stage: Docker
+    displayName: 'Build & Push Docker Image'
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: DockerBuild
+        displayName: 'Docker Build'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          # Download artifacts
+          - task: DownloadBuildArtifacts@1
+            displayName: 'Download JAR Artifact'
+            inputs:
+              buildType: 'current'
+              downloadType: 'single'
+              artifactName: 'flink-job'
+              downloadPath: '$(System.ArtifactsDirectory)'
+          
+          - task: DownloadBuildArtifacts@1
+            displayName: 'Download Infrastructure Artifact'
+            inputs:
+              buildType: 'current'
+              downloadType: 'single'
+              artifactName: 'infrastructure'
+              downloadPath: '$(System.ArtifactsDirectory)'
+          
+          # Prepare build context
+          - script: |
+              mkdir -p build-context/intelligence-processing/target
+              cp $(System.ArtifactsDirectory)/flink-job/intelligence-processing-1.0.0-SNAPSHOT.jar build-context/intelligence-processing/target/
+            displayName: 'Prepare Build Context'
+          
+          # Login to ACR
+          - task: AzureCLI@2
+            displayName: 'Login to ACR'
+            inputs:
+              azureSubscription: '$(azureSubscription)'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                az acr login --name $(acrName)
+          
+          # Build and push Docker image
+          - task: Docker@2
+            displayName: 'Build and Push Docker Image'
+            inputs:
+              containerRegistry: '$(acrName)'
+              repository: '$(imageName)'
+              command: 'buildAndPush'
+              Dockerfile: '$(System.ArtifactsDirectory)/infrastructure/docker/Dockerfile.flink'
+              buildContext: 'build-context'
+              tags: |
+                $(Build.BuildId)
+                latest
+
+  # ==========================================================================
+  # Stage 3: Deploy to Development
+  # ==========================================================================
+  - stage: DeployDev
+    displayName: 'Deploy to Development'
+    dependsOn: Docker
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployToAKS
+        displayName: 'Deploy Flink Job'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'fraud-detection-dev'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                # Download infrastructure
+                - task: DownloadBuildArtifacts@1
+                  displayName: 'Download Infrastructure'
+                  inputs:
+                    buildType: 'current'
+                    downloadType: 'single'
+                    artifactName: 'infrastructure'
+                    downloadPath: '$(System.ArtifactsDirectory)'
+                
+                # Get AKS credentials
+                - task: AzureCLI@2
+                  displayName: 'Get AKS Credentials'
+                  inputs:
+                    azureSubscription: '$(azureSubscription)'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      az aks get-credentials \
+                        --resource-group $(aksResourceGroup) \
+                        --name $(aksClusterName) \
+                        --overwrite-existing
+                
+                # Update image tag in deployment
+                - script: |
+                    sed -i "s|acr-fraud.azurecr.io/flink-fraud:latest|$(acrName).azurecr.io/$(imageName):$(Build.BuildId)|g" \
+                      $(System.ArtifactsDirectory)/infrastructure/k8s/flink-deployment.yaml
+                  displayName: 'Update Image Tag'
+                
+                # Apply Flink deployment
+                - task: Kubernetes@1
+                  displayName: 'Deploy Flink Job'
+                  inputs:
+                    connectionType: 'Azure Resource Manager'
+                    azureSubscriptionEndpoint: '$(azureSubscription)'
+                    azureResourceGroup: '$(aksResourceGroup)'
+                    kubernetesCluster: '$(aksClusterName)'
+                    namespace: '$(kubernetesNamespace)'
+                    command: 'apply'
+                    arguments: '-f $(System.ArtifactsDirectory)/infrastructure/k8s/flink-deployment.yaml'
+
+  # ==========================================================================
+  # Stage 4: Deploy to Production
+  # ==========================================================================
+  - stage: DeployProd
+    displayName: 'Deploy to Production'
+    dependsOn: DeployDev
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployToAKSProd
+        displayName: 'Deploy Flink Job (Production)'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'fraud-detection-prod'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: echo "Production deployment - same as dev but with prod configs"
+                  displayName: 'Production Deploy Placeholder'

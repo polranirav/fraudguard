@@ -1,0 +1,80 @@
+# Spring Boot Configuration for Fraud Alert Service
+# Real-Time Financial Fraud Detection Platform
+
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: fraud-alert-service
+  
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: alert-notification-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        spring.json.trusted.packages: com.frauddetection.common.model
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+# Custom Fraud Detection Configuration
+fraud:
+  alerts:
+    topic: fraud-alerts
+    consumer-group: alert-notification-group
+  notifications:
+    enabled: true
+    channels:
+      - SMS
+      - EMAIL
+      - PUSH
+
+# Actuator Endpoints for Health Monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    com.frauddetection: DEBUG
+    org.apache.kafka: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+---
+# Production Profile
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    consumer:
+      properties:
+        security.protocol: SASL_SSL
+        sasl.mechanism: PLAIN
+
+logging:
+  level:
+    root: WARN
+    com.frauddetection: INFO
+
+

@@ -1,0 +1,59 @@
+# =============================================================================
+# Dockerfile for Flink Fraud Detection Job
+# =============================================================================
+# Multi-stage build for optimized image size
+# =============================================================================
+
+# Stage 1: Build the uber-JAR
+FROM maven:3.9-eclipse-temurin-17 AS builder
+
+WORKDIR /build
+
+# Copy parent POM and download dependencies first (layer caching)
+COPY pom.xml .
+COPY intelligence-common/pom.xml intelligence-common/
+COPY intelligence-ingestion/pom.xml intelligence-ingestion/
+COPY intelligence-processing/pom.xml intelligence-processing/
+COPY intelligence-enrichment/pom.xml intelligence-enrichment/
+COPY intelligence-persistence/pom.xml intelligence-persistence/
+COPY intelligence-alerts/pom.xml intelligence-alerts/
+
+# Download dependencies
+RUN mvn dependency:go-offline -B
+
+# Copy source code
+COPY intelligence-common/src intelligence-common/src
+COPY intelligence-ingestion/src intelligence-ingestion/src
+COPY intelligence-processing/src intelligence-processing/src
+COPY intelligence-enrichment/src intelligence-enrichment/src
+COPY intelligence-persistence/src intelligence-persistence/src
+
+# Build the processing module (uber-JAR)
+RUN mvn clean package -pl intelligence-processing -am -DskipTests -B
+
+# Stage 2: Runtime image
+FROM flink:1.18.1-java17
+
+# Labels
+LABEL maintainer="Fraud Detection Platform Team"
+LABEL version="1.0.0"
+LABEL description="Real-Time Fraud Detection Flink Job"
+
+# Copy the uber-JAR from builder stage
+COPY --from=builder /build/intelligence-processing/target/intelligence-processing-*-SNAPSHOT.jar /opt/flink/usrlib/fraud-detection-job.jar
+
+# Copy custom configuration
+COPY infrastructure/docker/flink-conf.yaml /opt/flink/conf/flink-conf.yaml
+COPY infrastructure/docker/log4j-console.properties /opt/flink/conf/log4j-console.properties
+
+# Set environment variables
+ENV FLINK_HOME=/opt/flink
+ENV PATH=$PATH:$FLINK_HOME/bin
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8081/overview || exit 1
+
+# Default command
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["help"]

@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-inference-service
+  namespace: fraud-detection
+  labels:
+    app: ml-inference
+    component: fraud-detection
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ml-inference
+  template:
+    metadata:
+      labels:
+        app: ml-inference
+    spec:
+      containers:
+      - name: ml-inference
+        image: acrfrauddetection.azurecr.io/ml-inference:latest
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: MODEL_DIR
+          value: "/app/models"
+        - name: MODEL_FILE
+          value: "xgboost_fraud_model.pkl"
+        - name: MODEL_VERSION
+          value: "1.0.0"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - name: model-storage
+          mountPath: /app/models
+          readOnly: true
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: ml-model-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-inference-service
+  namespace: fraud-detection
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: ml-inference
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ml-inference-metrics
+  namespace: fraud-detection
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: ml-inference
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s

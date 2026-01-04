@@ -1,0 +1,215 @@
+---
+# Prometheus and Grafana Stack for Fraud Detection Platform
+# Deploys monitoring infrastructure using Helm charts
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+
+---
+# Prometheus Operator (required for ServiceMonitor CRD)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-operator
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus-operator
+  template:
+    metadata:
+      labels:
+        app: prometheus-operator
+    spec:
+      containers:
+      - name: prometheus-operator
+        image: quay.io/prometheus-operator/prometheus-operator:v0.68.0
+        args:
+        - --kubelet-service=kube-system/kubelet
+        - --logtostderr=true
+        - --config-reloader-image=quay.io/prometheus-operator/config-reloader:v0.68.0
+        ports:
+        - containerPort: 8080
+          name: http
+
+---
+# Prometheus Server
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9090
+    targetPort: 9090
+    name: http
+  selector:
+    app: prometheus
+
+---
+# Grafana
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:10.2.0
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: grafana-admin
+              key: password
+        - name: GF_SERVER_ROOT_URL
+          value: "%(protocol)s://%(domain)s:%(http_port)s/"
+        volumeMounts:
+        - name: grafana-storage
+          mountPath: /var/lib/grafana
+        - name: grafana-dashboards
+          mountPath: /etc/grafana/provisioning/dashboards
+        - name: grafana-datasources
+          mountPath: /etc/grafana/provisioning/datasources
+      volumes:
+      - name: grafana-storage
+        emptyDir: {}
+      - name: grafana-dashboards
+        configMap:
+          name: grafana-dashboards
+      - name: grafana-datasources
+        configMap:
+          name: grafana-datasources
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 3000
+    targetPort: 3000
+    name: http
+  selector:
+    app: grafana
+
+---
+# Grafana Data Source (Prometheus)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+data:
+  prometheus.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus:9090
+      isDefault: true
+      editable: true
+
+---
+# Flink Dashboard Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: monitoring
+data:
+  flink-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "Flink Fraud Detection Dashboard",
+        "panels": [
+          {
+            "title": "Transactions Processed per Second",
+            "targets": [
+              {
+                "expr": "flink_taskmanager_job_task_numRecordsInPerSecond",
+                "legendFormat": "{{task_name}}"
+              }
+            ]
+          },
+          {
+            "title": "Fraud Alerts Generated",
+            "targets": [
+              {
+                "expr": "flink_taskmanager_job_task_numRecordsOutPerSecond{task_name=~\"Fraud.*\"}",
+                "legendFormat": "Alerts/sec"
+              }
+            ]
+          },
+          {
+            "title": "Processing Latency",
+            "targets": [
+              {
+                "expr": "flink_taskmanager_job_task_latency_source_id_operator_id_operator_subtask_index_latency_p50",
+                "legendFormat": "P50 Latency"
+              }
+            ]
+          }
+        ]
+      }
+    }
+
+---
+# ServiceMonitor for Flink (Prometheus Operator)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: flink-metrics
+  namespace: monitoring
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: fraud-detection-job
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics
+
+---
+# ServiceMonitor for ML Inference Service
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ml-inference-metrics
+  namespace: monitoring
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: ml-inference
+  endpoints:
+  - port: http
+    interval: 15s
+    path: /metrics

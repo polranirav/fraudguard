@@ -1,0 +1,40 @@
+# =============================================================================
+# Dockerfile for Transaction Producer
+# =============================================================================
+
+FROM maven:3.9-eclipse-temurin-17 AS builder
+
+WORKDIR /build
+
+# Copy POMs for dependency resolution
+COPY pom.xml .
+COPY intelligence-common/pom.xml intelligence-common/
+COPY intelligence-ingestion/pom.xml intelligence-ingestion/
+
+# Download dependencies
+RUN mvn dependency:go-offline -B -pl intelligence-ingestion -am
+
+# Copy source
+COPY intelligence-common/src intelligence-common/src
+COPY intelligence-ingestion/src intelligence-ingestion/src
+
+# Build
+RUN mvn clean package -pl intelligence-ingestion -am -DskipTests -B
+
+# Runtime stage
+FROM eclipse-temurin:17-jre-alpine
+
+WORKDIR /app
+
+# Copy JAR
+COPY --from=builder /build/intelligence-ingestion/target/intelligence-ingestion-*-SNAPSHOT.jar app.jar
+
+# Environment variables
+ENV KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+ENV TOPIC_NAME=transactions-live
+ENV TRANSACTIONS_PER_SECOND=100
+
+# Run the producer
+ENTRYPOINT ["java", "-jar", "app.jar"]
+
+

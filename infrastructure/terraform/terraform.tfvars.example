@@ -1,0 +1,85 @@
+# =============================================================================
+# Real-Time Financial Fraud Detection Platform - Terraform Variables Example
+# =============================================================================
+# Copy this file to terraform.tfvars and fill in the values
+# NEVER commit terraform.tfvars to version control (it's in .gitignore)
+# =============================================================================
+
+# =============================================================================
+# General Configuration
+# =============================================================================
+
+environment = "dev"  # Options: dev, staging, prod
+location    = "eastus"
+owner_email = "your-email@company.com"
+cost_center = "fraud-detection-team"
+admin_cidr  = "10.0.0.0/8"  # CIDR for admin access to Flink UI
+
+# =============================================================================
+# AKS Configuration
+# =============================================================================
+
+kubernetes_version    = "1.28"
+aks_system_node_count = 2
+aks_system_vm_size    = "Standard_D4s_v3"
+aks_flink_node_count  = 3
+aks_flink_vm_size     = "Standard_E8s_v3"  # Memory-optimized for Flink
+
+# =============================================================================
+# Synapse Configuration
+# =============================================================================
+
+synapse_admin_username = "sqladmin"
+synapse_admin_password = "YourSecurePassword123!"  # CHANGE THIS!
+synapse_sku            = "DW100c"
+
+# Azure AD Admin for Synapse (get from Azure Portal > Azure Active Directory)
+aad_admin_login     = "admin@yourdomain.onmicrosoft.com"
+aad_admin_object_id = "00000000-0000-0000-0000-000000000000"  # Your Azure AD Object ID
+
+# =============================================================================
+# Event Hubs (Kafka) Configuration
+# =============================================================================
+
+eventhub_capacity = 4  # Throughput units (1-40)
+
+# =============================================================================
+# Redis Configuration
+# =============================================================================
+
+redis_capacity = 2      # Cache size (0-6 for Basic/Standard, 1-4 for Premium)
+redis_family   = "C"    # C = Basic/Standard, P = Premium
+redis_sku      = "Standard"  # Basic, Standard, or Premium
+
+# =============================================================================
+# Production Recommendations
+# =============================================================================
+#
+# For production deployments, consider:
+#
+# 1. AKS:
+#    - aks_flink_node_count = 5 or more
+#    - aks_flink_vm_size = "Standard_E16s_v3" for high throughput
+#    - Enable Azure Policy for Kubernetes
+#
+# 2. Synapse:
+#    - synapse_sku = "DW500c" or higher for production workloads
+#    - Enable result set caching
+#    - Configure workload management
+#
+# 3. Event Hubs:
+#    - eventhub_capacity = 8 or more for 100K+ TPS
+#    - Consider dedicated tier for guaranteed capacity
+#
+# 4. Redis:
+#    - redis_sku = "Premium" for clustering and persistence
+#    - redis_capacity = 4 for high availability
+#
+# 5. Security:
+#    - Enable Azure Defender for all services
+#    - Configure Azure Policy assignments
+#    - Enable diagnostic settings for all resources
+#
+# =============================================================================
+
+
