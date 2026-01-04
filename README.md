@@ -10,6 +10,9 @@ This platform provides real-time fraud detection for financial transactions usin
 
 - **Rule-Based Detection**: Velocity checks, geo-velocity (impossible travel), and CEP patterns
 - **Machine Learning**: XGBoost models with Bayesian optimization for fraud probability scoring
+- **Phase 1 Upgrade**: Liquid Neural Networks (LNN) for irregular time-series + Causal Inference for explainability
+- **Phase 2 Upgrade**: Graph Neural Networks (GNN) for fraud networks + Neuro-Symbolic AI (NSAI) for regulatory compliance
+- **Phase 3 Upgrade (NEW)**: Autonomous Rule Generation Agents with human-in-the-loop approval
 - **Real-Time Processing**: Apache Flink stateful stream processing with exactly-once semantics
 - **High Throughput**: Proven capability to handle 50K+ transactions per second
 
@@ -18,7 +21,10 @@ This platform provides real-time fraud detection for financial transactions usin
 ✅ **Sub-100ms Detection Latency** - Real-time fraud detection  
 ✅ **50K+ TPS Throughput** - Validated through load testing  
 ✅ **ML-Powered Scoring** - XGBoost models with 18% false positive reduction  
-✅ **Multi-Layered Detection** - Rule-based + ML + pattern matching  
+✅ **Phase 1: LNN + Causal** - Irregular time-series patterns + explainable AI  
+✅ **Phase 2: GNN + NSAI** - Fraud network detection + regulatory-compliant explanations  
+✅ **Phase 3: Autonomous Agents** - AI-powered rule generation with human approval  
+✅ **Multi-Layered Detection** - Rule-based + ML + LNN + pattern matching  
 ✅ **Production Ready** - Kubernetes deployment, monitoring, and CI/CD  
 ✅ **Cloud Native** - Azure infrastructure with auto-scaling  
 
@@ -354,6 +360,64 @@ kubectl apply -f infrastructure/k8s/prometheus-grafana-stack.yaml
 - **Data Masking**: PII automatically masked in logs
 - **Access Control**: Managed identities, no credentials in code
 - **Audit Logging**: All fraud decisions logged for compliance
+
+---
+
+## 🚀 Phase 1 Upgrade: CNS-DIS Foundation
+
+**Status**: ✅ **IMPLEMENTED** (2026-01-04)
+
+Phase 1 adds advanced capabilities to the fraud detection platform:
+
+### New Components
+
+1. **Liquid Neural Network (LNN) Service**
+   - Processes irregularly sampled transaction sequences
+   - Detects temporal patterns that fixed-window approaches miss
+   - Handles real-world scenarios: "5 transactions in 1 minute, then silence for a week"
+
+2. **Causal Inference Service**
+   - Provides explainable counterfactual explanations
+   - Answers: "Why was this transaction flagged?"
+   - Regulatory compliance (EU AI Act)
+
+### Enhanced Scoring
+
+**New Composite Score Formula**:
+```
+CompositeScore = 
+    0.40 × RuleScore +           // Rules: Fast, explainable
+    0.25 × MLScore +              // ML: Pattern recognition
+    0.20 × LNNScore +            // LNN: Irregular time-series patterns
+    0.15 × TemporalPatternScore  // Temporal irregularity indicator
+```
+
+### Documentation
+
+- **Phase 1 Implementation**: [docs/PHASE1_IMPLEMENTATION.md](docs/PHASE1_IMPLEMENTATION.md)
+- **Phase 2 Implementation**: [docs/PHASE2_IMPLEMENTATION.md](docs/PHASE2_IMPLEMENTATION.md)
+- **Phase 3 Implementation**: [docs/PHASE3_IMPLEMENTATION.md](docs/PHASE3_IMPLEMENTATION.md)
+- **Architecture**: [docs/CNS_DIS_ARCHITECTURE.md](docs/CNS_DIS_ARCHITECTURE.md)
+- **Research**: [docs/UPGRADE_RESEARCH_CNS_DIS.md](docs/UPGRADE_RESEARCH_CNS_DIS.md)
+
+### Quick Start (Phase 1 + Phase 2 + Phase 3)
+
+```bash
+# Train models
+cd ml-models/lnn-service && ./train_lnn.sh
+cd ../gnn-service && ./train_gnn.sh
+
+# Start all services (including Phase 1 + Phase 2 + Phase 3)
+docker-compose -f docker-compose.dev.yml up -d
+
+# Test services
+curl http://localhost:8001/health  # LNN
+curl http://localhost:8002/health  # Causal
+curl http://localhost:8003/health  # GNN
+curl http://localhost:8004/health  # NSAI
+curl http://localhost:8005/health  # Rule Agent
+curl http://localhost:8006/health  # Rule Management
+```
 
 ---
 

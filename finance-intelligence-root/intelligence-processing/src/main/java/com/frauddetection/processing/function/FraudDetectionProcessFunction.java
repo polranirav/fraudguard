@@ -4,6 +4,10 @@ import com.frauddetection.common.dto.RiskScoreResult;
 import com.frauddetection.common.model.*;
 import com.frauddetection.processing.ml.MLFeatures;
 import com.frauddetection.processing.ml.MLInferenceClient;
+import com.frauddetection.processing.lnn.LNNInferenceClient;
+import com.frauddetection.processing.causal.CausalInferenceClient;
+import com.frauddetection.processing.gnn.GNNInferenceClient;
+import com.frauddetection.processing.nsai.NSAIInferenceClient;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
@@ -61,6 +65,26 @@ public class FraudDetectionProcessFunction
     private transient MLInferenceClient mlClient;
     private static final String ML_SERVICE_URL = System.getenv().getOrDefault(
             "ML_INFERENCE_SERVICE_URL", "http://ml-inference-service:8000");
+    
+    // LNN Inference Client (Phase 1)
+    private transient LNNInferenceClient lnnClient;
+    private static final String LNN_SERVICE_URL = System.getenv().getOrDefault(
+            "LNN_SERVICE_URL", "http://lnn-service:8001");
+    
+    // Causal Inference Client (Phase 1)
+    private transient CausalInferenceClient causalClient;
+    private static final String CAUSAL_SERVICE_URL = System.getenv().getOrDefault(
+            "CAUSAL_SERVICE_URL", "http://causal-service:8002");
+    
+    // GNN Inference Client (Phase 2)
+    private transient GNNInferenceClient gnnClient;
+    private static final String GNN_SERVICE_URL = System.getenv().getOrDefault(
+            "GNN_SERVICE_URL", "http://gnn-service:8003");
+    
+    // NSAI Inference Client (Phase 2)
+    private transient NSAIInferenceClient nsaiClient;
+    private static final String NSAI_SERVICE_URL = System.getenv().getOrDefault(
+            "NSAI_SERVICE_URL", "http://nsai-service:8004");
 
     @Override
     public void open(Configuration parameters) throws Exception {
@@ -98,8 +122,24 @@ public class FraudDetectionProcessFunction
         // Initialize ML inference client
         mlClient = new MLInferenceClient(ML_SERVICE_URL);
         LOG.info("ML Inference Client initialized with URL: {}", ML_SERVICE_URL);
+        
+        // Initialize LNN inference client (Phase 1)
+        lnnClient = new LNNInferenceClient(LNN_SERVICE_URL);
+        LOG.info("LNN Inference Client initialized with URL: {}", LNN_SERVICE_URL);
+        
+        // Initialize Causal Inference client (Phase 1)
+        causalClient = new CausalInferenceClient(CAUSAL_SERVICE_URL);
+        LOG.info("Causal Inference Client initialized with URL: {}", CAUSAL_SERVICE_URL);
+        
+        // Initialize GNN Inference client (Phase 2)
+        gnnClient = new GNNInferenceClient(GNN_SERVICE_URL);
+        LOG.info("GNN Inference Client initialized with URL: {}", GNN_SERVICE_URL);
+        
+        // Initialize NSAI Inference client (Phase 2)
+        nsaiClient = new NSAIInferenceClient(NSAI_SERVICE_URL);
+        LOG.info("NSAI Inference Client initialized with URL: {}", NSAI_SERVICE_URL);
 
-        LOG.info("FraudDetectionProcessFunction initialized");
+        LOG.info("FraudDetectionProcessFunction initialized with Phase 1 (LNN + Causal) and Phase 2 (GNN + NSAI) upgrades");
     }
 
     @Override
@@ -133,6 +173,31 @@ public class FraudDetectionProcessFunction
         // Get ML fraud probability (with fallback to 0.0 if service unavailable)
         double mlScore = mlClient.getFraudProbability(txn, mlFeatures);
         
+        // Phase 1: Get LNN score for irregular time-series patterns
+        double lnnScore = 0.0;
+        double temporalPatternScore = 0.0;
+        try {
+            // Build transaction sequence from recent transactions
+            List<Transaction> sequence = new ArrayList<>();
+            for (Transaction historicalTxn : recentTransactions.values()) {
+                sequence.add(historicalTxn);
+            }
+            
+            // Get LNN prediction
+            LNNInferenceClient.LNNPredictionResult lnnResult = 
+                lnnClient.getFraudProbability(txn, sequence, mlFeatures);
+            lnnScore = lnnResult.getFraudProbability();
+            temporalPatternScore = lnnResult.getTemporalPatternScore();
+            
+            // If irregularity detected, boost risk score
+            if (lnnResult.isIrregularityDetected() && lnnScore > 0.3) {
+                lnnScore = Math.min(lnnScore + 0.1, 1.0); // Boost by 0.1, cap at 1.0
+            }
+        } catch (Exception e) {
+            LOG.debug("LNN inference failed (non-critical): {}", e.getMessage());
+            // Continue without LNN score (graceful degradation)
+        }
+        
         // Update state
         recentTransactions.put(currentTime, txn);
         if (txn.getLocation() != null) {
@@ -144,14 +209,111 @@ public class FraudDetectionProcessFunction
         }
         lastTransactionTime.update(currentTime);
 
-        // Generate alert if rules triggered OR ML score is high
-        boolean shouldAlert = !triggeredRules.isEmpty() || mlScore > 0.5;
+        // Phase 2: Get GNN score for network fraud detection
+        double gnnScore = 0.0;
+        List<String> detectedPatterns = new ArrayList<>();
+        String gnnExplanation = "";
+        try {
+            GNNInferenceClient.GNNPredictionResult gnnResult = 
+                gnnClient.getNetworkFraudProbability(txn, mlFeatures, customerId);
+            gnnScore = gnnResult.getNetworkFraudProbability();
+            detectedPatterns = gnnResult.getDetectedPatterns();
+            gnnExplanation = gnnResult.getExplanation();
+            
+            // If fraud network patterns detected, boost risk score
+            if (!detectedPatterns.isEmpty() && !detectedPatterns.contains("individual_transaction")) {
+                gnnScore = Math.min(gnnScore + 0.1, 1.0); // Boost by 0.1, cap at 1.0
+            }
+        } catch (Exception e) {
+            LOG.debug("GNN inference failed (non-critical): {}", e.getMessage());
+            // Continue without GNN score (graceful degradation)
+        }
+        
+        // Phase 2: Get NSAI score with explanation (for high-risk transactions)
+        double nsaiScore = 0.0;
+        String nsaiExplanation = "";
+        boolean useNSAI = false; // Only use NSAI for high-risk to avoid performance impact
+        
+        // Phase 1 + Phase 2: Enhanced composite scoring
+        // Weighted combination: Rules (30%), ML (20%), LNN (15%), Temporal (10%), GNN (15%), NSAI (10%)
+        // For initial calculation, use previous scores
+        double preliminaryScore = 
+            0.30 * ruleScore +
+            0.20 * mlScore +
+            0.15 * lnnScore +
+            0.10 * temporalPatternScore +
+            0.15 * gnnScore;
+        
+        // Use NSAI for high-risk transactions (preliminary score > 0.6)
+        if (preliminaryScore > 0.6) {
+            useNSAI = true;
+            try {
+                NSAIInferenceClient.NSAIPredictionResult nsaiResult = 
+                    nsaiClient.predictWithExplanation(txn, mlFeatures);
+                nsaiScore = nsaiResult.getFraudProbability();
+                nsaiExplanation = nsaiResult.getExplanationSummary();
+            } catch (Exception e) {
+                LOG.debug("NSAI inference failed (non-critical): {}", e.getMessage());
+                // Continue without NSAI score (graceful degradation)
+            }
+        }
+        
+        // Final composite score (includes NSAI if available)
+        double compositeScore;
+        if (useNSAI && nsaiScore > 0) {
+            compositeScore = 
+                0.25 * ruleScore +
+                0.15 * mlScore +
+                0.12 * lnnScore +
+                0.08 * temporalPatternScore +
+                0.12 * gnnScore +
+                0.28 * nsaiScore; // Higher weight for NSAI when available
+        } else {
+            compositeScore = preliminaryScore;
+        }
+        
+        // Generate alert if composite score exceeds threshold OR rules triggered
+        boolean shouldAlert = !triggeredRules.isEmpty() || compositeScore > 0.5;
         
         if (shouldAlert) {
-            FraudAlert alert = createFraudAlert(txn, triggeredRules, ruleScore, mlScore);
+            FraudAlert alert = createFraudAlert(txn, triggeredRules, ruleScore, mlScore, 
+                                                lnnScore, temporalPatternScore, gnnScore, 
+                                                nsaiScore, compositeScore);
+            
+            // Phase 1: Generate causal explanation (async, non-blocking)
+            // Only for high-risk alerts to avoid performance impact
+            if (compositeScore > 0.7) {
+                try {
+                    CausalInferenceClient.CausalExplanation explanation = 
+                        causalClient.generateExplanation(txn, mlFeatures, compositeScore, triggeredRules);
+                    
+                    // Log explanation for analyst review
+                    LOG.info("Causal explanation for transaction {}: {}", 
+                            txn.getTransactionId(), explanation.getExplanationSummary());
+                    LOG.debug("Root cause: {}", explanation.getRootCause());
+                } catch (Exception e) {
+                    LOG.debug("Causal explanation failed (non-critical): {}", e.getMessage());
+                    // Continue without explanation (graceful degradation)
+                }
+            }
+            
+            // Phase 2: Log GNN and NSAI explanations
+            if (!gnnExplanation.isEmpty()) {
+                LOG.info("GNN network detection for transaction {}: {}", 
+                        txn.getTransactionId(), gnnExplanation);
+                if (!detectedPatterns.isEmpty()) {
+                    LOG.info("Detected patterns: {}", String.join(", ", detectedPatterns));
+                }
+            }
+            
+            if (!nsaiExplanation.isEmpty()) {
+                LOG.info("NSAI explanation for transaction {}: {}", 
+                        txn.getTransactionId(), nsaiExplanation);
+            }
+            
             out.collect(alert);
-            LOG.warn("Fraud alert generated for customer {}: {} (ML score: {:.2f})", 
-                    customerId, alert.getSummary(), mlScore);
+            LOG.warn("Fraud alert generated for customer {}: composite_score={:.2f} (Rules:{:.2f}, ML:{:.2f}, LNN:{:.2f}, GNN:{:.2f}, NSAI:{:.2f})", 
+                    customerId, compositeScore, ruleScore, mlScore, lnnScore, gnnScore, nsaiScore);
         }
     }
 
@@ -365,16 +527,24 @@ public class FraudDetectionProcessFunction
     }
     
     /**
-     * Creates a FraudAlert from triggered rules and ML score.
+     * Creates a FraudAlert from triggered rules, ML score, Phase 1 components (LNN + Causal),
+     * and Phase 2 components (GNN + NSAI).
      */
-    private FraudAlert createFraudAlert(Transaction txn, List<TriggeredRule> rules, double ruleScore, double mlScore) {
+    private FraudAlert createFraudAlert(Transaction txn, List<TriggeredRule> rules, 
+                                        double ruleScore, double mlScore, 
+                                        double lnnScore, double temporalPatternScore,
+                                        double gnnScore, double nsaiScore,
+                                        double compositeScore) {
         RiskScoreResult scoreResult = RiskScoreResult.builder()
                 .ruleBasedScore(ruleScore)
                 .mlScore(mlScore) // Real ML score from inference service
-                .embeddingScore(0.0) // Placeholder for embedding integration
+                .embeddingScore(Math.max(lnnScore, gnnScore)) // Phase 1: LNN score, Phase 2: GNN score (use max)
                 .triggeredRules(rules)
                 .build();
-        scoreResult.calculateCompositeScore();
+        
+        // Phase 1 + Phase 2: Set enhanced composite score
+        // Includes: Rules, ML, LNN, Temporal Pattern, GNN, NSAI
+        scoreResult.setCompositeScore(compositeScore);
 
         Instant alertTime = Instant.now();
         Instant transactionTime = txn.getEventTime();

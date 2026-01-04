@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gnn-service
+  namespace: fraud-detection
+  labels:
+    app: gnn-service
+    component: phase2-upgrade
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: gnn-service
+  template:
+    metadata:
+      labels:
+        app: gnn-service
+        component: phase2-upgrade
+    spec:
+      containers:
+      - name: gnn-inference
+        image: acrfrauddetection.azurecr.io/gnn-service:latest
+        ports:
+        - containerPort: 8003
+          name: http
+        env:
+        - name: MODEL_DIR
+          value: "/app/models"
+        - name: GNN_MODEL_FILE
+          value: "gnn_fraud_model.pt"
+        - name: MODEL_VERSION
+          value: "1.0.0"
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2"
+          limits:
+            memory: "8Gi"
+            cpu: "4"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8003
+          initialDelaySeconds: 40
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8003
+          initialDelaySeconds: 20
+          periodSeconds: 5
+        volumeMounts:
+        - name: models
+          mountPath: /app/models
+          readOnly: true
+      volumes:
+      - name: models
+        persistentVolumeClaim:
+          claimName: gnn-models-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gnn-service
+  namespace: fraud-detection
+  labels:
+    app: gnn-service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8003
+    targetPort: 8003
+    protocol: TCP
+    name: http
+  selector:
+    app: gnn-service
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gnn-models-pvc
+  namespace: fraud-detection
+spec:
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: azurefile

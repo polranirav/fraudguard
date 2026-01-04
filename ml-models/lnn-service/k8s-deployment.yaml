@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lnn-service
+  namespace: fraud-detection
+  labels:
+    app: lnn-service
+    component: phase1-upgrade
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: lnn-service
+  template:
+    metadata:
+      labels:
+        app: lnn-service
+        component: phase1-upgrade
+    spec:
+      containers:
+      - name: lnn-inference
+        image: acrfrauddetection.azurecr.io/lnn-service:latest
+        ports:
+        - containerPort: 8001
+          name: http
+        env:
+        - name: MODEL_DIR
+          value: "/app/models"
+        - name: MODEL_FILE
+          value: "lnn_fraud_model.pt"
+        - name: MODEL_VERSION
+          value: "1.0.0"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        volumeMounts:
+        - name: models
+          mountPath: /app/models
+          readOnly: true
+      volumes:
+      - name: models
+        persistentVolumeClaim:
+          claimName: lnn-models-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lnn-service
+  namespace: fraud-detection
+  labels:
+    app: lnn-service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8001
+    targetPort: 8001
+    protocol: TCP
+    name: http
+  selector:
+    app: lnn-service
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lnn-models-pvc
+  namespace: fraud-detection
+spec:
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: azurefile

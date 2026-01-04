@@ -162,6 +162,134 @@ services:
     networks:
       - default
 
+  # Phase 1: LNN Service (Liquid Neural Network for irregular time-series)
+  lnn-service:
+    build:
+      context: ./ml-models/lnn-service
+      dockerfile: Dockerfile
+    container_name: fraud-lnn-service
+    ports:
+      - "8001:8001"
+    environment:
+      - MODEL_DIR=/app/models
+      - LNN_MODEL_FILE=lnn_fraud_model.pt
+      - MODEL_VERSION=1.0.0
+    volumes:
+      - ./ml-models/models:/app/models:ro
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - default
+    depends_on:
+      - ml-inference
+
+  # Phase 1: Causal Inference Service (Explainability)
+  causal-service:
+    build:
+      context: ./ml-models/causal-service
+      dockerfile: Dockerfile
+    container_name: fraud-causal-service
+    ports:
+      - "8002:8002"
+    environment:
+      - MODEL_VERSION=1.0.0
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - default
+
+  # Phase 2: GNN Service (Graph Neural Network for fraud networks)
+  gnn-service:
+    build:
+      context: ./ml-models/gnn-service
+      dockerfile: Dockerfile
+    container_name: fraud-gnn-service
+    ports:
+      - "8003:8003"
+    environment:
+      - MODEL_DIR=/app/models
+      - GNN_MODEL_FILE=gnn_fraud_model.pt
+      - MODEL_VERSION=1.0.0
+    volumes:
+      - ./ml-models/models:/app/models:ro
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8003/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - default
+    depends_on:
+      - lnn-service
+
+  # Phase 2: NSAI Service (Neuro-Symbolic AI for explainable decisions)
+  nsai-service:
+    build:
+      context: ./ml-models/nsai-service
+      dockerfile: Dockerfile
+    container_name: fraud-nsai-service
+    ports:
+      - "8004:8004"
+    environment:
+      - MODEL_VERSION=1.0.0
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8004/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - default
+
+  # Phase 3: Rule Generation Agent Service (Autonomous rule generation)
+  rule-agent-service:
+    build:
+      context: ./ml-models/rule-agent-service
+      dockerfile: Dockerfile
+    container_name: fraud-rule-agent-service
+    ports:
+      - "8005:8005"
+    environment:
+      - MODEL_VERSION=1.0.0
+      - LLM_ENABLED=false
+      - LLM_MODEL=gpt-4
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8005/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - default
+
+  # Phase 3: Rule Management Service (Rule lifecycle management)
+  rule-management-service:
+    build:
+      context: ./ml-models/rule-management-service
+      dockerfile: Dockerfile
+    container_name: fraud-rule-management-service
+    ports:
+      - "8006:8006"
+    environment:
+      - MODEL_VERSION=1.0.0
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8006/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - default
+
 volumes:
   redis-data:
   flink-checkpoints:

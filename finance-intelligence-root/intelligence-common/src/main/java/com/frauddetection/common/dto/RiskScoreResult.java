@@ -87,6 +87,8 @@ public class RiskScoreResult implements Serializable {
     /**
      * Calculates the composite score using configured weights.
      * Formula: compositeScore = w1 * ruleBasedScore + w2 * mlScore + w3 * embeddingScore
+     * 
+     * Phase 1 Enhancement: Supports LNN score via embeddingScore parameter
      */
     public void calculateCompositeScore() {
         double rule = ruleBasedScore != null ? ruleBasedScore : 0.0;
@@ -96,6 +98,16 @@ public class RiskScoreResult implements Serializable {
         this.compositeScore = (ruleWeight * rule) + (mlWeight * ml) + (embeddingWeight * embedding);
         
         // Determine severity based on composite score
+        this.severity = determineSeverity(compositeScore);
+        this.recommendedAction = determineAction(severity);
+    }
+    
+    /**
+     * Sets composite score directly (used when enhanced scoring is calculated externally).
+     * Phase 1: Allows setting composite score that includes LNN and temporal pattern scores.
+     */
+    public void setCompositeScore(double score) {
+        this.compositeScore = Math.max(0.0, Math.min(1.0, score)); // Clamp to 0-1
         this.severity = determineSeverity(compositeScore);
         this.recommendedAction = determineAction(severity);
     }
